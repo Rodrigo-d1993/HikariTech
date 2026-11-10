@@ -1,7 +1,6 @@
 import { Amplify } from 'aws-amplify';
 import { environment } from '../../../environments/environment';
 
-// Se llama una sola vez, antes de bootstrapear la app (ver main.ts)
 export function configureAmplify(): void {
   Amplify.configure({
     Auth: {
@@ -11,7 +10,7 @@ export function configureAmplify(): void {
         loginWith: {
           oauth: {
             domain: environment.cognito.domain,
-            scopes: ['openid', 'email', 'profile', 'resource-server-pedidos360/pedidos-api-read'],
+            scopes: ['openid', 'email', 'profile'],
             redirectSignIn: [environment.cognito.redirectSignIn],
             redirectSignOut: [environment.cognito.redirectSignOut],
             responseType: 'code', // Authorization Code + PKCE

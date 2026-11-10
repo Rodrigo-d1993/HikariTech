@@ -1,0 +1,54 @@
+server:
+  port: 8081
+
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
+
+  # ─── Base de datos ──────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:pedidos360_productos}?useSSL=${DB_USE_SSL:false}&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  # ─── RabbitMQ ───────────────────────────────────────────────────────────────
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+
+  # ─── Security / JWT ─────────────────────────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:}
+
+# ─── Propiedades propias de ms-productos ──────────────────────────────────────
+app:
+  rabbit:
+    exchanges:
+      productos: productos.exchange
+    queues:
+      inventario:      productos.inventario
+      log:             productos.log
+      inventario-dlq:  productos.inventario.dlq
+      log-dlq:         productos.log.dlq
+    routing-keys:
+      producto-creado:   producto.creado
+      producto-pattern:  "producto.#"
+    dlx: productos.dlx

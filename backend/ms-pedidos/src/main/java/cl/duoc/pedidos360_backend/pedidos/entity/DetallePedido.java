@@ -29,7 +29,7 @@ public class DetallePedido {
     @Column(nullable = false)
     private Integer cantidad;
 
-    @NotNull
+    // Asignado por PedidoService al consultar ms-productos; no viene del request del cliente
     @Column(nullable = false)
     private BigDecimal precioUnitario;
 

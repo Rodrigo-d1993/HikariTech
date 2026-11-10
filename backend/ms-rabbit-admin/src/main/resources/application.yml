@@ -1,0 +1,21 @@
+server:
+  port: 8083
+
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
+
+  # ─── Security / JWT ─────────────────────────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:}
+
+# ─── RabbitMQ Management API ──────────────────────────────────────────────────
+app:
+  rabbit:
+    admin:
+      url:      ${RABBITMQ_ADMIN_URL:http://localhost:15672/api}
+      username: ${RABBITMQ_ADMIN_USER:guest}
+      password: ${RABBITMQ_ADMIN_PASSWORD:guest}

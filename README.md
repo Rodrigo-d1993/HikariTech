@@ -1,150 +1,286 @@
-# Pedidos360 — EP1 DSY1107
+# Pedidos360 — DSY1107 Desarrollo Cloud Native I
 
-Proyecto de la asignatura **DSY1107 Desarrollo Cloud Native I** (Duoc UC).
+Sistema de pedidos con microservicios Spring Boot, mensajería RabbitMQ, autenticación con AWS Cognito y frontend Angular.
 
-Sistema de pedidos con arquitectura cloud native en AWS: frontend en Angular con login vía Amazon Cognito (Hosted UI + AWS Amplify), dos microservicios en Spring Boot desplegados en EC2, base de datos MySQL en Amazon RDS, y AWS API Gateway (REST API) como punto de entrada, con validación de identidad mediante un Cognito Authorizer (JWT).
+---
 
 ## Arquitectura
 
 ```
-Usuario → Angular (Amplify) → Cognito Hosted UI → ID Token (JWT)
-                ↓
-Angular → API Gateway (Cognito Authorizer) → EC2 → Spring Boot → RDS MySQL
+Frontend Angular (localhost:4200)
+        │
+        │  Authorization Code + PKCE
+        ▼
+  AWS Cognito (IDaaS)
+        │  JWT (Bearer token)
+        ▼
+  AWS API Gateway  ─── valida JWT ───────────┐
+        │                                    │
+   /api/productos                      /api/pedidos
+        │                                    │
+        ▼                                    ▼
+  ms-productos :8081              ms-pedidos :8082
+  RDS MySQL (pedidos360_productos)  RDS MySQL (pedidos360_pedidos)
+        │                                    │
+        └──────────── RabbitMQ ──────────────┘
+                        │
+              ms-rabbit-admin :8083
 ```
 
-- **Frontend (Angular 17, standalone):** login administrado por Cognito vía AWS Amplify (Authorization Code + PKCE). Un interceptor HTTP adjunta el token en cada llamada y un guard protege las rutas privadas, redirigiendo a `/login` si no hay sesión.
-- **API Gateway:** actúa como API Manager. Valida el JWT con un Cognito Authorizer antes de dejar pasar cualquier request hacia el backend, y tiene CORS configurado para el origen del frontend.
-- **Backend (Spring Boot, 2 microservicios):** exponen los endpoints de negocio y persisten en RDS MySQL. `ms-pedidos` consulta a `ms-productos` (RestTemplate) para validar existencia, stock y precio al crear un pedido.
-- **Base de datos:** MySQL en Amazon RDS, una base por microservicio.
+**Exchanges RabbitMQ:**
+- `pedidos.exchange` (DIRECT): routing key `pedido.creado` → cola `pedidos.notificacion`, `pedido.estado` → cola `pedidos.auditoria`
+- `productos.exchange` (TOPIC): `producto.creado` → cola `productos.inventario`, `producto.#` → cola `productos.log`
+- Cada cola principal tiene su DLQ configurada (`pedidos.dlx` / `productos.dlx`)
 
-## Estructura
+**Notificaciones por email (JavaMailSender):**
+- Al crear un pedido → `NotificacionConsumer` envía email de confirmación al cliente via SMTP Gmail
+- Al cambiar estado de un pedido → `AuditoriaConsumer` envía email de actualización al cliente
+- En producción se reemplazaría por AWS SES cambiando solo las variables de entorno
 
-```
-backend/ms-productos   → API de productos: listar, buscar, crear, actualizar y eliminar (puerto 8081)
-backend/ms-pedidos     → API de pedidos: listar por cliente, buscar, crear y actualizar estado (puerto 8082)
-frontend               → Angular 17 standalone, login vía Cognito Hosted UI + Amplify
-```
+---
 
-## Funcionalidades del frontend
+## Prerrequisitos
 
-| Ruta | Descripción |
-|---|---|
-| `/login` | Pantalla de acceso con botón que redirige al Hosted UI de Cognito |
-| `/productos` | Listado de productos en tarjetas. Permite **comprar** (crea un pedido de 1 unidad) y **eliminar** un producto |
-| `/pedidos` | Pedidos del usuario autenticado, con fecha, estado, detalle por producto y total |
+- Java 17+
+- Maven 3.x (`mvn -v` para verificar)
+- Docker Desktop (para RabbitMQ local)
+- Node.js 18+ y Angular CLI (`npm install -g @angular/cli`)
+- MySQL Workbench (para conectar al RDS de AWS)
+- PowerShell (Windows)
 
-La barra superior muestra el correo del usuario y el botón para cerrar sesión. El `clienteId` de cada pedido corresponde al `sub` del usuario en Cognito.
+---
 
-## Endpoints expuestos en API Gateway (stage `test`)
+## Levantar en local con RDS de AWS
 
-Todas las rutas requieren el header `Authorization: Bearer <ID_TOKEN>`.
+> En modo local los microservicios arrancan **sin validar JWT** (`JWK_SET_URI` vacío → `permitAll`).
+> El frontend igual pasa por Cognito (Amplify configurado con el User Pool real).
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/productos` | Listar productos |
-| POST | `/api/productos` | Crear producto |
-| DELETE | `/api/productos/{id}` | Eliminar producto |
-| GET | `/api/pedidos?clienteId={sub}` | Listar pedidos de un cliente |
-| POST | `/api/pedidos` | Crear pedido |
+> ⚠️ **Antes de arrancar:** verifica que tu IP actual esté autorizada en el Security Group del RDS
+> (puerto 3306). Si cambiaste de red, actualiza la regla en AWS Console → EC2 → Security Groups.
 
-Ejemplo de body para `POST /api/productos`:
+### 1. RabbitMQ
 
-```json
-{
-  "nombre": "Mouse inalámbrico",
-  "descripcion": "Mouse óptico inalámbrico 2.4GHz",
-  "precio": 12990,
-  "stock": 50
-}
+```powershell
+cd backend
+docker compose up -d
 ```
 
-Ejemplo de body para `POST /api/pedidos`:
+Verifica en http://localhost:15672 (usuario: `guest` / contraseña: `guest`)
 
-```json
-{
-  "clienteId": "<sub del usuario en Cognito>",
-  "items": [
-    { "productoId": 1, "cantidad": 2 }
-  ]
-}
+### 2. Microservicios (4 terminales separadas)
+
+**Terminal 1 — ms-productos (:8081)**
+```powershell
+cd backend\ms-productos
+$env:DB_HOST="pedidos360-db.cim02rcogyo2.us-east-1.rds.amazonaws.com"
+$env:DB_PORT="3306"; $env:DB_NAME="pedidos360_productos"
+$env:DB_USER="admin"; $env:DB_PASSWORD="TU_CLAVE"; $env:DB_USE_SSL="true"
+mvn spring-boot:run
 ```
 
-El backend implementa además otros endpoints (por ejemplo `GET` y `PUT /api/productos/{id}`, `GET /api/pedidos/{id}` y `PATCH /api/pedidos/{id}/estado`) que se pueden exponer en API Gateway siguiendo el mismo procedimiento.
-
-## Cómo correr localmente
-
-Requisitos: Java 17, Maven, Node.js y Angular CLI.
-
-### Backend
-
-Necesitas MySQL local (o apunta las variables de entorno a tu RDS). Las bases `pedidos360_productos` y `pedidos360_pedidos` deben existir; las tablas las crea Hibernate al iniciar.
-
-```
-export DB_HOST=localhost
-export DB_PORT=3306
-export DB_USER=root
-export DB_PASSWORD=root
+**Terminal 2 — ms-pedidos (:8082)**
+```powershell
+cd backend\ms-pedidos
+$env:DB_HOST="pedidos360-db.cim02rcogyo2.us-east-1.rds.amazonaws.com"
+$env:DB_PORT="3306"; $env:DB_NAME="pedidos360_pedidos"
+$env:DB_USER="admin"; $env:DB_PASSWORD="TU_CLAVE"; $env:DB_USE_SSL="true"
+$env:MAIL_PASSWORD="TU_APP_PASSWORD_GMAIL"
+mvn spring-boot:run
 ```
 
-En cada carpeta de microservicio:
+> `MAIL_PASSWORD`: contraseña de aplicación de Gmail (16 caracteres, generada en myaccount.google.com/apppasswords).
+> `MAIL_DEMO_RECIPIENT` (opcional): email destino en modo local. Por defecto usa `gamehikari.tech@gmail.com`.
 
+**Terminal 3 — ms-rabbit-admin (:8083)**
+```powershell
+cd backend\ms-rabbit-admin
+mvn spring-boot:run
 ```
-# backend/ms-productos
-DB_NAME=pedidos360_productos mvn spring-boot:run
 
-# backend/ms-pedidos
-DB_NAME=pedidos360_pedidos PRODUCTOS_SERVICE_URL=http://localhost:8081 mvn spring-boot:run
-```
-
-Levanta primero `ms-productos`, porque `ms-pedidos` lo consulta al crear un pedido.
-
-Cada microservicio incluye tests unitarios (`ProductoServiceTest`, `PedidoServiceTest`), ejecutables con `mvn test`.
-
-### Frontend
-
-```
+**Terminal 4 — Frontend (:4200)**
+```powershell
 cd frontend
-npm install
+npm install   # solo la primera vez
 npm start
 ```
 
-Completa `src/environments/environment.ts` con los datos reales de tu Cognito User Pool (`userPoolId`, `userPoolClientId`, `domain`) y la Invoke URL de API Gateway (`apiBaseUrl`, `pedidosBaseUrl`, terminadas en `/test`, sin barra final). La aplicación queda en `http://localhost:4200`.
+Abre http://localhost:4200
 
-La app usa **AWS Amplify** (`aws-amplify/auth`) para el login vía Hosted UI de Cognito. Amplify procesa el retorno del login automáticamente en la URL configurada como `redirectSignIn`, así que no hace falta una ruta `/callback`. Esa URL (`http://localhost:4200/`) debe coincidir exactamente con las Allowed callback URLs y Allowed sign-out URLs del App Client.
+### 3. Verificación de salud
 
-## Despliegue en AWS
+| Servicio | URL |
+|---|---|
+| RabbitMQ Management | http://localhost:15672 |
+| ms-productos health | http://localhost:8081/actuator/health |
+| ms-pedidos health | http://localhost:8082/actuator/health |
+| ms-rabbit-admin health | http://localhost:8083/actuator/health |
 
-1. Crear el User Pool y un App Client público (sin client secret) en Amazon Cognito.
-2. Configurar el dominio administrado y las callback / sign-out URLs hacia el frontend.
-3. Crear la instancia de RDS MySQL y las dos bases de datos.
-4. Generar los JAR con `mvn clean package -DskipTests` en cada microservicio y subirlos a un bucket de S3.
-5. En la EC2, descargar los JAR usando el IAM Role de la instancia (sin credenciales estáticas) y ejecutarlos con las variables de entorno de conexión:
+### 4. Documentación interactiva (Swagger)
+
+| Servicio | URL |
+|---|---|
+| ms-productos | http://localhost:8081/swagger-ui.html |
+| ms-pedidos | http://localhost:8082/swagger-ui.html |
+| ms-rabbit-admin | http://localhost:8083/swagger-ui.html |
+
+---
+
+## Configurar para AWS
+
+### 1. Cognito (User Pool ya configurado)
+
+El User Pool está configurado en `frontend/src/environments/environment.ts`:
+- `userPoolId`: `us-east-1_FiIcrh4Jk`
+- Grupos: `Admin` (administradores), `Cliente` (usuarios finales)
+- Los grupos se mapean a roles en `CognitoJwtConverter` (`ROLE_Admin` / `ROLE_Cliente`)
+
+Para activar validación JWT en los microservicios, agrega:
+```
+JWK_SET_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_FiIcrh4Jk/.well-known/jwks.json
+```
+
+### 2. RDS MySQL (ya configurado)
+
+- Endpoint: `pedidos360-db.cim02rcogyo2.us-east-1.rds.amazonaws.com`
+- Bases de datos: `pedidos360_productos` y `pedidos360_pedidos`
+- El schema se crea automáticamente con `ddl-auto: update` al primer arranque
+- Para inicializar manualmente:
+  ```powershell
+  mysql -h pedidos360-db.cim02rcogyo2.us-east-1.rds.amazonaws.com -u admin -p < backend\scripts\sql\01_ms_productos_schema.sql
+  mysql -h pedidos360-db.cim02rcogyo2.us-east-1.rds.amazonaws.com -u admin -p < backend\scripts\sql\02_ms_pedidos_schema.sql
+  ```
+
+### 3. API Gateway (un API REST por microservicio)
+
+Crea 3 APIs REST en API Gateway:
+
+| Microservicio | Recursos | Métodos |
+|---|---|---|
+| ms-productos | `/api/productos` | GET, POST |
+| | `/api/productos/{id}` | GET, PUT, DELETE |
+| | `/api/productos/{id}/stock` | PATCH |
+| ms-pedidos | `/api/pedidos` | GET, POST |
+| | `/api/pedidos/todos` | GET |
+| | `/api/pedidos/{id}` | GET |
+| | `/api/pedidos/{id}/estado` | PATCH |
+| ms-rabbit-admin | `/admin/queues` | GET, POST |
+| | `/admin/queues/{nombre}` | GET, DELETE |
+| | `/admin/exchanges` | GET, POST |
+| | `/admin/exchanges/{nombre}` | DELETE |
+| | `/admin/bindings` | GET, POST |
+| | `/admin/bindings/{exchange}/{cola}/{routingKey}` | DELETE |
+| | `/admin/overview` | GET |
+
+Para cada API:
+1. Crea un **Cognito Authorizer** apuntando al User Pool `us-east-1_FiIcrh4Jk`
+2. Habilita CORS en cada recurso
+3. Configura la integración HTTP con la URL del microservicio
+4. En `frontend/src/environments/environment.prod.ts`, reemplaza los placeholders con los Invoke URL
+
+### 4. RabbitMQ en EC2
+
+```bash
+# En la EC2, copia los archivos y ejecuta:
+bash backend/scripts/setup-ec2.sh
+```
+
+El `docker-compose.cluster.yml` levanta un clúster de 2 nodos.
+
+---
+
+## Endpoints principales
+
+> **Modelo de autorización (modo Cognito, `JWK_SET_URI` configurado):** los grupos de Cognito (`Admin`, `Cliente`) se mapean a roles (`ROLE_Admin`/`ROLE_Cliente`) en `CognitoJwtConverter`. "Admin" = solo administradores; "Autenticado" = cualquier usuario con sesión válida; "Público" = sin JWT. En **modo local** (`JWK_SET_URI` vacío) todo es `permitAll` (sin seguridad) para desarrollo.
+>
+> **Tenencia de pedidos:** en modo Cognito el `clienteId` se toma del `sub` del JWT, no del query ni del body. Un cliente solo ve y crea SUS pedidos; al consultar el detalle de un pedido ajeno recibe 404. El Admin puede ver cualquier pedido.
+>
+> **Email del cliente:** el claim `email` del JWT se extrae al crear el pedido y se almacena en `clienteEmail`. Los consumers de RabbitMQ (`NotificacionConsumer`, `AuditoriaConsumer`) lo usan para enviar emails reales al destinatario correcto.
+
+### ms-productos (`:8081`)
+| Método | Ruta | Descripción | Rol requerido |
+|--------|------|-------------|---------------|
+| GET | `/api/productos` | Listar todos | Público |
+| GET | `/api/productos/{id}` | Detalle producto | Público |
+| POST | `/api/productos` | Crear producto | Admin |
+| PUT | `/api/productos/{id}` | Actualizar producto | Admin |
+| DELETE | `/api/productos/{id}` | Eliminar producto | Admin |
+| PATCH | `/api/productos/{id}/stock` | Descontar stock | Autenticado * |
+
+> \* `PATCH /stock` lo llama ms-pedidos (service-to-service) reenviando el JWT del cliente.
+
+### ms-pedidos (`:8082`)
+| Método | Ruta | Descripción | Rol requerido |
+|--------|------|-------------|---------------|
+| GET | `/api/pedidos` | Mis pedidos (clienteId del token) | Autenticado |
+| GET | `/api/pedidos/todos` | Todos los pedidos | Admin |
+| GET | `/api/pedidos/{id}` | Detalle (propietario o Admin) | Autenticado |
+| POST | `/api/pedidos` | Crear pedido (clienteId del token) | Autenticado |
+| PATCH | `/api/pedidos/{id}/estado` | Cambiar estado | Admin |
+
+### ms-rabbit-admin (`:8083`)
+
+> Todos los endpoints requieren rol **Admin** en modo Cognito.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/admin/queues` | Listar colas |
+| POST | `/admin/queues` | Crear cola |
+| GET | `/admin/queues/{nombre}` | Detalle de una cola |
+| DELETE | `/admin/queues/{nombre}` | Eliminar cola |
+| GET | `/admin/exchanges` | Listar exchanges |
+| POST | `/admin/exchanges` | Crear exchange |
+| DELETE | `/admin/exchanges/{nombre}` | Eliminar exchange |
+| GET | `/admin/bindings` | Listar bindings |
+| POST | `/admin/bindings` | Crear binding |
+| DELETE | `/admin/bindings/{exchange}/{cola}/{routingKey}` | Eliminar binding |
+| GET | `/admin/overview` | Resumen del broker |
+
+---
+
+## Variables de entorno
+
+| Variable | Descripción | Default |
+|---|---|---|
+| `DB_HOST` | Host del RDS MySQL | `localhost` |
+| `DB_PORT` | Puerto MySQL | `3306` |
+| `DB_NAME` | Nombre de la base de datos | según microservicio |
+| `DB_USER` | Usuario MySQL | `root` |
+| `DB_PASSWORD` | Contraseña MySQL | `root` |
+| `DB_USE_SSL` | Habilitar SSL para RDS | `false` |
+| `JWK_SET_URI` | JWKS URI de Cognito (activa validación JWT) | vacío (modo local) |
+| `MAIL_PASSWORD` | Contraseña de aplicación Gmail | vacío |
+| `MAIL_USERNAME` | Cuenta Gmail remitente | `gamehikari.tech@gmail.com` |
+| `MAIL_FROM` | Dirección "from" del email | `gamehikari.tech@gmail.com` |
+| `MAIL_DEMO_RECIPIENT` | Destinatario en modo local | `gamehikari.tech@gmail.com` |
+| `PRODUCTOS_SERVICE_URL` | URL de ms-productos (usado por ms-pedidos) | `http://localhost:8081` |
+| `RABBITMQ_HOST` | Host de RabbitMQ | `localhost` |
+| `RABBITMQ_USER` | Usuario RabbitMQ | `guest` |
+| `RABBITMQ_PASSWORD` | Contraseña RabbitMQ | `guest` |
+
+Ver `.env.example` para la lista completa.
+
+---
+
+## Estructura del repositorio
 
 ```
-   DB_HOST=<endpoint-rds> DB_PORT=3306 DB_NAME=pedidos360_productos \
-   DB_USER=<usuario> DB_PASSWORD='<password>' \
-   nohup java -jar ms-productos-0.0.1-SNAPSHOT.jar > productos.log 2>&1 &
-
-   DB_HOST=<endpoint-rds> DB_PORT=3306 DB_NAME=pedidos360_pedidos \
-   DB_USER=<usuario> DB_PASSWORD='<password>' \
-   PRODUCTOS_SERVICE_URL=http://localhost:8081 \
-   nohup java -jar ms-pedidos-0.0.1-SNAPSHOT.jar > pedidos.log 2>&1 &
+Pedidos360/
+├── backend/
+│   ├── ms-pedidos/          Spring Boot :8082
+│   │   └── messaging/       PedidoProducer, NotificacionConsumer (email),
+│   │                        AuditoriaConsumer (email), EmailService
+│   ├── ms-productos/        Spring Boot :8081
+│   ├── ms-rabbit-admin/     Spring Boot :8083 — administración RabbitMQ REST API
+│   ├── scripts/
+│   │   ├── sql/             Scripts DDL para RDS MySQL
+│   │   └── setup-ec2.sh     Script de instalación en Ubuntu EC2
+│   ├── docker-compose.yml           RabbitMQ local (nodo único)
+│   ├── docker-compose.cluster.yml   RabbitMQ clúster 2 nodos (EC2)
+│   └── .env.example         Plantilla de variables de entorno
+├── frontend/                Angular 17 + AWS Amplify (Cognito PKCE)
+│   └── src/environments/
+│       ├── environment.ts       Desarrollo local (localhost)
+│       └── environment.prod.ts  Producción (API Gateway URLs)
+├── central-emergencias/     Ejemplo de referencia RabbitMQ (NO modificar)
+└── README.md
 ```
-
-6. Abrir en el Security Group de la EC2 los puertos 8081 y 8082.
-7. Crear la REST API en API Gateway, con los recursos `/api/productos`, `/api/productos/{id}` y `/api/pedidos`, integración HTTP Proxy hacia `http://<EC2_PUBLIC_IP>:8081` y `:8082`, según corresponda.
-8. Configurar CORS para el origen del frontend (métodos GET, POST, DELETE y OPTIONS; headers `Content-Type` y `Authorization`).
-9. Crear un Cognito Authorizer (token source `Authorization`) y asociarlo a cada método.
-10. Hacer **Deploy API** al stage `test` y completar `environment.ts` con la Invoke URL resultante.
-
-**Nota sobre el laboratorio:** al reiniciar la sesión del Learner Lab, la IP pública de la EC2 puede cambiar. En ese caso hay que actualizar la URL de integración en API Gateway, volver a desplegar la API y volver a levantar los microservicios.
-
-## Alcance y límites conocidos
-
-- **Validación del JWT:** se realiza únicamente en API Gateway mediante el Cognito Authorizer. Los microservicios no vuelven a validar el token: la capa de Defense in Depth (Spring Security como Resource Server) quedó fuera del alcance de esta etapa.
-- **Acceso directo al backend:** como API Gateway usa una integración HTTP pública hacia la EC2, los puertos 8081 y 8082 están abiertos en el Security Group, por lo que el backend puede invocarse directamente sin pasar por API Gateway. Para un entorno productivo se recomendaría una integración privada (VPC Link) y validar el JWT también en el backend.
-- **Permisos:** cualquier usuario autenticado puede crear y eliminar productos; no hay autorización por rol.
-
-## Notas de configuración de repositorio
-
-Cada subproyecto tiene su propio `.gitignore` (Java/Maven para los backends, Angular/Node para el frontend), de modo que `target/`, `node_modules/`, artefactos de IDE y archivos `.env` no se suben al repositorio. Las credenciales de base de datos se inyectan por variables de entorno y no quedan en el código versionado. Los identificadores de Cognito (User Pool ID, App Client ID y dominio) se configuran en `environment.ts`; no son secretos, ya que el App Client es público.

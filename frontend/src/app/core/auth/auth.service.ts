@@ -18,7 +18,7 @@ export class AuthService {
 
   async isAuthenticated(): Promise<boolean> {
     try {
-      const session = await fetchAuthSession();
+      const session = await fetchAuthSession({ forceRefresh: true });
       return !!session.tokens?.accessToken;
     } catch {
       return false;
@@ -26,7 +26,7 @@ export class AuthService {
   }
 
   async getAccessToken(): Promise<string | null> {
-    const session = await fetchAuthSession();
+    const session = await fetchAuthSession({ forceRefresh: true });
     return session.tokens?.accessToken?.toString() ?? null;
   }
 

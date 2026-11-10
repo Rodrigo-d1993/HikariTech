@@ -1,0 +1,34 @@
+## ─────────────────────────────────────────────────────────────────────────────
+## Docker Compose — Desarrollo local
+##
+## Levanta SOLO RabbitMQ. Los microservicios Spring Boot se arrancan por separado
+## con Maven (para poder ver sus logs independientemente y recargar en caliente).
+##
+## Uso:
+##   docker compose up -d
+##   → RabbitMQ disponible en:
+##       AMQP:       localhost:5672
+##       Management: http://localhost:15672  (usuario: guest / pass: guest)
+## ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq-pedidos360
+    ports:
+      - "5672:5672"    # AMQP — los microservicios Spring Boot se conectan aquí
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rabbitmq_data:

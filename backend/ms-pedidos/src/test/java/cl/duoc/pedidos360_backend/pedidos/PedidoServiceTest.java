@@ -4,6 +4,7 @@ import cl.duoc.pedidos360_backend.pedidos.client.ProductoClient;
 import cl.duoc.pedidos360_backend.pedidos.client.ProductoDTO;
 import cl.duoc.pedidos360_backend.pedidos.entity.DetallePedido;
 import cl.duoc.pedidos360_backend.pedidos.entity.Pedido;
+import cl.duoc.pedidos360_backend.pedidos.messaging.PedidoProducer;
 import cl.duoc.pedidos360_backend.pedidos.repository.PedidoRepository;
 import cl.duoc.pedidos360_backend.pedidos.service.PedidoService;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,9 @@ class PedidoServiceTest {
     @Mock
     private ProductoClient productoClient;
 
+    @Mock
+    private PedidoProducer pedidoProducer;   // nuevo mock requerido por el constructor
+
     @Test
     void crear_lanzaExcepcionSiNoHayStock() {
         ProductoDTO producto = new ProductoDTO();
@@ -37,7 +41,7 @@ class PedidoServiceTest {
         Pedido pedido = new Pedido("cliente-123");
         pedido.getItems().add(new DetallePedido(1L, 5, null));
 
-        PedidoService service = new PedidoService(pedidoRepository, productoClient);
+        PedidoService service = new PedidoService(pedidoRepository, productoClient, pedidoProducer);
 
         assertThrows(IllegalArgumentException.class, () -> service.crear(pedido));
     }

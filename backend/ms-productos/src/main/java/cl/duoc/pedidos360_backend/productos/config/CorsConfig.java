@@ -13,11 +13,13 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-                // TODO: en producción, reemplazar "*" por la URL real del frontend (Amplify/S3/CloudFront)
+                // allowedOriginPatterns permite wildcard con cabeceras de autorización.
+                // En producción reemplazar por la URL real del frontend.
                 registry.addMapping("/api/**")
-                        .allowedOrigins("http://localhost:4200", "*")
+                        .allowedOriginPatterns("*")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                        .allowedHeaders("*");
+                        .allowedHeaders("*")
+                        .allowCredentials(false);
             }
         };
     }

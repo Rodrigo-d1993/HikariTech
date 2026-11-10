@@ -9,6 +9,8 @@ export interface Producto {
   descripcion: string;
   precio: number;
   stock: number;
+  imagenUrl?: string;
+  categoria?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -21,8 +23,24 @@ export class ProductoService {
     return this.http.get<Producto[]>(this.baseUrl);
   }
 
+  listarPorCategoria(categoria: string): Observable<Producto[]> {
+    return this.http.get<Producto[]>(this.baseUrl, { params: { categoria } });
+  }
+
+  listarCategorias(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.baseUrl}/categorias`);
+  }
+
+  buscarPorId(id: number): Observable<Producto> {
+    return this.http.get<Producto>(`${this.baseUrl}/${id}`);
+  }
+
   crear(producto: Producto): Observable<Producto> {
     return this.http.post<Producto>(this.baseUrl, producto);
+  }
+
+  actualizar(id: number, producto: Producto): Observable<Producto> {
+    return this.http.put<Producto>(`${this.baseUrl}/${id}`, producto);
   }
 
   eliminar(id: number): Observable<void> {

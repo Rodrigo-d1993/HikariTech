@@ -30,6 +30,12 @@ public class Producto {
     @Column(nullable = false)
     private Integer stock;
 
+    @Column(length = 1000)
+    private String imagenUrl;
+
+    @Column(length = 50)
+    private String categoria;
+
     public Producto() {
     }
 
@@ -78,5 +84,21 @@ public class Producto {
 
     public void setStock(Integer stock) {
         this.stock = stock;
+    }
+
+    public String getImagenUrl() {
+        return imagenUrl;
+    }
+
+    public void setImagenUrl(String imagenUrl) {
+        this.imagenUrl = imagenUrl;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    public void setCategoria(String categoria) {
+        this.categoria = categoria;
     }
 }

@@ -8,14 +8,14 @@ import { AuthService } from '../../core/auth/auth.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="login-wrap">
-      <div class="card login-card">
-        <h1>Pedidos<span>360</span></h1>
-        <p>Inicia sesión para ver los productos y tus pedidos.</p>
+    <div class="login-page">
+      <div class="login-card">
+        <div class="login-logo">Hikari<span class="accent">Tec</span><span class="dot">.</span></div>
+        <p class="login-tagline">Tu tienda gamer de confianza</p>
 
-        <div class="error" *ngIf="error">{{ error }}</div>
+        <div class="alert-error" *ngIf="error">{{ error }}</div>
 
-        <button class="btn btn-primary" (click)="login()" [disabled]="cargando">
+        <button class="btn btn-primary btn-full" (click)="login()" [disabled]="cargando">
           {{ cargando ? 'Redirigiendo...' : 'Iniciar sesión' }}
         </button>
       </div>
@@ -29,7 +29,6 @@ export class LoginComponent implements OnInit {
   constructor(private auth: AuthService, private router: Router) {}
 
   async ngOnInit(): Promise<void> {
-    // Si ya hay sesión, no tiene sentido mostrar el login
     if (await this.auth.isAuthenticated()) {
       this.router.navigate(['/productos']);
     }
@@ -39,10 +38,10 @@ export class LoginComponent implements OnInit {
     this.cargando = true;
     this.error = '';
     try {
-      await this.auth.login(); // redirige al Hosted UI de Cognito
+      await this.auth.login();
     } catch (e) {
       console.error(e);
-      this.error = 'No se pudo iniciar sesión. Revisa la configuración de Cognito en environment.ts.';
+      this.error = 'No se pudo iniciar sesión. Revisa la configuración de Cognito.';
       this.cargando = false;
     }
   }

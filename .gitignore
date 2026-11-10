@@ -1,5 +1,19 @@
-# Este .gitignore es solo para archivos sueltos en la raíz.
-# Cada subproyecto (backend/ms-productos, backend/ms-pedidos, frontend)
-# tiene su propio .gitignore específico para su tecnología.
+# ─── Sistema operativo ────────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+
+# ─── Variables de entorno (NUNCA subir a git) ─────────────────────────────────
+.env
 *.env
+!.env.example
+
+# ─── IDEs ─────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/settings.json
+
+# ─── Cada subproyecto tiene su propio .gitignore para artefactos específicos ──
+# backend/ms-productos/.gitignore  → target/, *.class
+# backend/ms-pedidos/.gitignore    → target/, *.class
+# backend/ms-rabbit-admin/.gitignore → target/, *.class
+# frontend/.gitignore              → node_modules/, dist/

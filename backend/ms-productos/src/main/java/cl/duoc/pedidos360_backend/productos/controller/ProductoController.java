@@ -22,8 +22,16 @@ public class ProductoController {
     }
 
     @GetMapping
-    public List<Producto> listar() {
+    public List<Producto> listar(@RequestParam(required = false) String categoria) {
+        if (categoria != null && !categoria.isBlank()) {
+            return productoService.listarPorCategoria(categoria);
+        }
         return productoService.listar();
+    }
+
+    @GetMapping("/categorias")
+    public List<String> listarCategorias() {
+        return productoService.listarCategorias();
     }
 
     @GetMapping("/{id}")
@@ -37,6 +45,16 @@ public class ProductoController {
     @ResponseStatus(HttpStatus.CREATED)
     public Producto crear(@Valid @RequestBody Producto producto) {
         return productoService.crear(producto);
+    }
+
+    @PatchMapping("/{id}/stock")
+    public ResponseEntity<Producto> descontarStock(@PathVariable Long id,
+                                                    @RequestBody java.util.Map<String, Integer> body) {
+        int cantidad = body.getOrDefault("cantidad", 0);
+        if (cantidad <= 0) return ResponseEntity.badRequest().build();
+        return productoService.descontarStock(id, cantidad)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{id}")

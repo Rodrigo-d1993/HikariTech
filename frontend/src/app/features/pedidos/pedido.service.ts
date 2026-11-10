@@ -12,6 +12,7 @@ export interface DetallePedido {
 export interface Pedido {
   id?: number;
   clienteId: string;
+  clienteEmail?: string;
   fecha?: string;
   estado?: string;
   items: DetallePedido[];
@@ -27,7 +28,15 @@ export class PedidoService {
     return this.http.get<Pedido[]>(this.baseUrl, { params: { clienteId } });
   }
 
+  listarTodos(): Observable<Pedido[]> {
+    return this.http.get<Pedido[]>(`${this.baseUrl}/todos`);
+  }
+
   crear(pedido: Pedido): Observable<Pedido> {
     return this.http.post<Pedido>(this.baseUrl, pedido);
+  }
+
+  actualizarEstado(id: number, estado: string): Observable<Pedido> {
+    return this.http.patch<Pedido>(`${this.baseUrl}/${id}/estado`, { estado });
   }
 }

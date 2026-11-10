@@ -1,0 +1,54 @@
+.banner-customizable {
+  background-color: #0d0f14;
+}
+
+.background-customizable {
+  background-color: #0d0f14;
+}
+
+.submitButton-customizable {
+  background-color: #7c3aed;
+  border-color: #7c3aed;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.submitButton-customizable:hover {
+  background-color: #6025c4;
+  border-color: #6025c4;
+}
+
+.inputField-customizable {
+  background-color: #1a1e2a;
+  border: 1px solid #2a2f3f;
+  color: #e2e8f0;
+  border-radius: 8px;
+}
+
+.inputField-customizable:focus {
+  border-color: #7c3aed;
+}
+
+.label-customizable {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.textDescription-customizable {
+  color: #e2e8f0;
+}
+
+.idpButton-customizable {
+  background-color: #1a1e2a;
+  border-color: #2a2f3f;
+  color: #e2e8f0;
+  border-radius: 8px;
+}
+
+.legalText-customizable {
+  color: #64748b;
+}
+
+.redirect-customizable {
+  color: #00d4ff;
+}
